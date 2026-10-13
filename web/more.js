@@ -307,7 +307,7 @@ async function installVersion(r, v) {
   if (v.kind === 'mod') return installMod(r, v);
   const isGame = v.kind === 'game';
   const ok = await confirmBox(isGame ? 'Скачать и играть?' : 'Скачать мод?',
-    `Будет скачано: ${v.asset} (${mb(v.size)}), версия ${v.tag}, с GitHub автора. `
+    `${v.exclusive ? 'Будет установлено из локальных файлов' : 'Будет скачано'}: ${v.asset} (${mb(v.size)}), версия ${v.tag}${v.exclusive ? '' : ', с GitHub автора'}. `
     + (isGame ? 'Игра распакуется в папку данных приложения и добавится в библиотеку, время в ней будет считаться само. '
       : 'Файлы сохранятся в отдельную папку внутри «Загрузки». Нужен Minecraft с подходящим загрузчиком (Forge), подробности в описании проекта на GitHub. ')
     + 'Запускайте только проекты, которым доверяете.', isGame ? 'Скачать и играть' : 'Скачать', 'primary');
@@ -348,7 +348,7 @@ function versionRow(r, v) {
   }
   const isInstalledRow = installed || (v.kind === 'mod' && (authorState.mods.installed[r.name] || {}).tag === v.tag);
   return h('div', { class: `ver-row${isInstalledRow ? ' installed' : ''}` },
-    h('div', { class: 'ver-info' }, h('b', {}, v.tag), isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив · только в Hub'),
+    h('div', { class: 'ver-info' }, h('b', {}, v.tag), isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив'),
       isInstalledRow && h('span', { class: 'ver-badge' }, 'установлена'),
       h('small', {}, [fmtDate(v.published), mb(v.size), v.title && v.title !== v.tag ? v.title : ''].filter(Boolean).join(' · '))),
     progress && progress.state === 'error' ? h('div', { class: 'error-line' }, `Не получилось: ${progress.error}`) : null,
@@ -399,7 +399,7 @@ function drawAuthorCards() {
 
     grid.append(h('article', { class: `card${open ? ' wide-card' : ''}`, style: `--d:${Math.min(i, 18) * 40}ms` },
       h('div', { class: 'g-body', style: 'padding-top:16px' },
-        latest && latest.exclusive && h('div', { class: 'excl' }, 'Эксклюзив: новейшая версия только в Hub'),
+        latest && latest.exclusive && h('div', { class: 'excl' }, 'Эксклюзив: версия только в файлах Hub'),
         h('div', { class: 'g-title' }, r.name),
         r.desc ? h('div', { class: 'g-notes', style: '-webkit-line-clamp:4' }, r.desc) : null,
         r.lang ? h('div', { class: 'techs' }, h('span', { class: 'tech' }, r.lang)) : null,

@@ -264,26 +264,24 @@ def _github_json(path):
         return json.loads(response.read().decode("utf-8"))
 
 
-HUB_REPO = "Hub"
-EXCLUSIVE_PREFIX = {"Lotos-Outer": "lotos-"}  # проект -> префикс тега в релизах Hub, где лежат его эксклюзивные версии
-AUTHOR_SCHEMA = 3  # при смене формата кэш списка проектов считается устаревшим
+AUTHOR_SCHEMA = 4  # при смене формата кэш списка проектов считается устаревшим
+EXCLUSIVE_DIR = DATA_DIR / "exclusive"  # эксклюзивные версии: только файлы на этом компьютере, в интернет не выкладываются
 
 
-def _versions_from_releases(releases, tag_prefix="", exclusive=False):
+def _versions_from_releases(releases):
     versions = []
     for release in releases:
         if release.get("draft"):
             continue
-        raw_tag = release.get("tag_name") or release.get("name") or ""
-        if not raw_tag or (tag_prefix and not raw_tag.startswith(tag_prefix)):
+        tag = release.get("tag_name") or release.get("name") or ""
+        if not tag:
             continue
-        tag = raw_tag[len(tag_prefix):]
         assets = release.get("assets", [])
 
         def entry(kind, files, main):
             return {"kind": kind, "tag": tag, "title": (release.get("name") or "")[:90], "asset": main["name"],
                     "url": main["browser_download_url"], "size": main["size"], "published": release.get("published_at") or "",
-                    "exclusive": exclusive,
+                    "exclusive": False,
                     "files": [{"name": a["name"], "url": a["browser_download_url"], "size": a["size"]} for a in files]}
 
         zips = [a for a in assets if a["name"].lower().endswith(".zip")]
@@ -305,25 +303,66 @@ def _versions_from_releases(releases, tag_prefix="", exclusive=False):
 
 
 def _list_versions(repo):
-    """Все версии проекта, в которые можно сыграть: релизы самого проекта плюс эксклюзивные версии из релизов Hub."""
+    """Все опубликованные версии проекта, в которые можно сыграть (из релизов на GitHub), новейшие первыми."""
     try:
         versions = _versions_from_releases(_github_json(f"repos/{AUTHOR_LOGIN}/{repo}/releases?per_page=50"))
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
         return []
-    prefix = EXCLUSIVE_PREFIX.get(repo)
-    if prefix:
-        try:
-            exclusive = _versions_from_releases(_github_json(f"repos/{AUTHOR_LOGIN}/{HUB_REPO}/releases?per_page=50"), prefix, True)
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
-            exclusive = []
-        taken = {v["tag"] for v in exclusive}
-        versions = exclusive + [v for v in versions if v["tag"] not in taken]  # одинаковая версия: берём эксклюзивную
     seen, unique = set(), []
-    for item in sorted(versions, key=lambda v: v["published"], reverse=True):  # новейшие первыми
+    for item in sorted(versions, key=lambda v: v["published"], reverse=True):
         if item["tag"] not in seen:
             seen.add(item["tag"])
             unique.append(item)
     return unique
+
+
+def _local_exclusive(repo):
+    """Эксклюзивные версии из папки exclusive/<проект>/<версия>/ (файлы .jar или .zip). Нигде не публикуются."""
+    root = EXCLUSIVE_DIR / repo
+    versions = []
+    if not root.is_dir():
+        return versions
+    for folder in root.iterdir():
+        if not folder.is_dir():
+            continue
+        files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in (".jar", ".zip")]
+        if not files:
+            continue
+        zips = [f for f in files if f.suffix.lower() == ".zip"]
+        games = [f for f in zips if "win" in f.name.lower()] or [f for f in zips if not MOD_WORDS.search(f.name)]
+        if games:
+            kind, chosen = "game", [max(games, key=lambda f: f.stat().st_size)]
+        else:
+            kind, chosen = "mod", sorted(files, key=lambda f: f.name)
+        published = datetime.datetime.fromtimestamp(max(f.stat().st_mtime for f in chosen), datetime.timezone.utc)
+        versions.append({
+            "kind": kind, "tag": folder.name, "title": "Эксклюзивная версия", "exclusive": True, "url": "",
+            "asset": ", ".join(f.name for f in chosen), "size": sum(f.stat().st_size for f in chosen),
+            "published": published.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "files": [{"name": f.name, "path": str(f), "size": f.stat().st_size} for f in chosen]})
+    return sorted(versions, key=lambda v: v["published"], reverse=True)
+
+
+def _all_versions(repo):
+    """Эксклюзивные (из файлов) и опубликованные версии проекта из кэша списка."""
+    cached = _read_json(AUTHOR_FILE, {})
+    published = next((r.get("versions") or [] for r in cached.get("repos", []) if r["name"] == repo), [])
+    local = _local_exclusive(repo)
+    taken = {v["tag"] for v in local}
+    return local + [v for v in published if v["tag"] not in taken and not v.get("exclusive")]
+
+
+def _fetch_file(item, dest, on_progress):
+    """Файл версии: из папки exclusive (копия) или с GitHub автора (загрузка)."""
+    if item.get("path"):
+        source = Path(item["path"]).resolve()
+        if EXCLUSIVE_DIR.resolve() not in source.parents:
+            raise ValueError("Файл вне папки exclusive.")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, dest)
+        on_progress(1.0)
+    else:
+        _download_file(item["url"], dest, on_progress)
 
 
 def _download_file(url, dest, on_progress):
@@ -391,16 +430,16 @@ def _author_worker(repo, play):
             if not jars:  # сборка-архив для лаунчера: в mods её не положишь, сохраняем в «Загрузки»
                 folder = Path.home() / "Downloads" / f"{repo} {safe_tag}"
                 for index, item in enumerate(files):
-                    _download_file(item["url"], folder / Path(item["name"]).name,
-                                   lambda f, i=index: progress.update(percent=int((i + f) / len(files) * 100)))
+                    _fetch_file(item, folder / Path(item["name"]).name,
+                            lambda f, i=index: progress.update(percent=int((i + f) / len(files) * 100)))
                 progress.update(state="done", percent=100, path=str(folder))
                 return
             mods_dir = Path(play["mods_dir"])
             staging = DATA_DIR / "downloads" / repo / safe_tag
             shutil.rmtree(staging, ignore_errors=True)
             for index, item in enumerate(jars):
-                _download_file(item["url"], staging / Path(item["name"]).name,
-                               lambda f, i=index: progress.update(percent=int((i + f) / len(jars) * 90)))
+                _fetch_file(item, staging / Path(item["name"]).name,
+                            lambda f, i=index: progress.update(percent=int((i + f) / len(jars) * 90)))
             progress.update(label="Устанавливаю", percent=95)
             mods_dir.mkdir(parents=True, exist_ok=True)
             backup = mods_dir / ".hub-old"
@@ -421,7 +460,8 @@ def _author_worker(repo, play):
             return
         base = AUTHOR_GAMES_DIR / repo
         archive_path = base / f"{safe_tag}.zip"
-        _download_file(play["url"], archive_path, lambda f: progress.update(percent=int(f * 90)))
+        _fetch_file((play.get("files") or [{"name": play["asset"], "url": play["url"]}])[0], archive_path,
+                    lambda f: progress.update(percent=int(f * 90)))
         progress.update(label="Распаковываю", percent=92)
         version_dir = base / safe_tag
         shutil.rmtree(version_dir, ignore_errors=True)
@@ -873,8 +913,7 @@ class Api:
         return {"installed": installed, "progress": {k: dict(v) for k, v in _author_progress.items()}}
 
     def author_install(self, repo, tag=None, mods_dir=None):
-        cached = _read_json(AUTHOR_FILE, {})
-        versions = next((r.get("versions") or [] for r in cached.get("repos", []) if r["name"] == repo), [])
+        versions = _all_versions(repo)
         play = next((v for v in versions if v["tag"] == tag), None) if tag else (versions[0] if versions else None)
         if not play:
             return {"ok": False, "error": "Для этого проекта нет готовой сборки."}
@@ -964,6 +1003,14 @@ class Api:
 
     # ---- проекты автора (GitHub) ----
     def author_projects(self):
+        result = self._author_projects_raw()
+        for repo in result.get("repos", []):
+            local = _local_exclusive(repo["name"])
+            taken = {v["tag"] for v in local}
+            repo["versions"] = local + [v for v in repo.get("versions", []) if v["tag"] not in taken and not v.get("exclusive")]
+        return result
+
+    def _author_projects_raw(self):
         """Публичные репозитории автора. Кэш на 6 часов; без сети отдаём прежний кэш."""
         cached = _read_json(AUTHOR_FILE, {})
         if cached.get("repos") and cached.get("schema") == AUTHOR_SCHEMA and all("versions" in r for r in cached["repos"]) and time.time() - cached.get("ts", 0) < 6 * 3600:
