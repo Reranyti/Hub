@@ -264,24 +264,26 @@ def _github_json(path):
         return json.loads(response.read().decode("utf-8"))
 
 
-def _list_versions(repo):
-    """Все версии проекта, в которые можно сыграть: Windows-сборка (zip) или мод для Minecraft (jar / сборка)."""
-    try:
-        releases = _github_json(f"repos/{AUTHOR_LOGIN}/{repo}/releases?per_page=50")
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
-        return []
-    versions, seen = [], set()
+HUB_REPO = "Hub"
+EXCLUSIVE_PREFIX = {"Lotos-Outer": "lotos-"}  # проект -> префикс тега в релизах Hub, где лежат его эксклюзивные версии
+AUTHOR_SCHEMA = 3  # при смене формата кэш списка проектов считается устаревшим
+
+
+def _versions_from_releases(releases, tag_prefix="", exclusive=False):
+    versions = []
     for release in releases:
         if release.get("draft"):
             continue
-        tag = release.get("tag_name") or release.get("name") or ""
-        if not tag or tag in seen:
+        raw_tag = release.get("tag_name") or release.get("name") or ""
+        if not raw_tag or (tag_prefix and not raw_tag.startswith(tag_prefix)):
             continue
+        tag = raw_tag[len(tag_prefix):]
         assets = release.get("assets", [])
 
         def entry(kind, files, main):
             return {"kind": kind, "tag": tag, "title": (release.get("name") or "")[:90], "asset": main["name"],
                     "url": main["browser_download_url"], "size": main["size"], "published": release.get("published_at") or "",
+                    "exclusive": exclusive,
                     "files": [{"name": a["name"], "url": a["browser_download_url"], "size": a["size"]} for a in files]}
 
         zips = [a for a in assets if a["name"].lower().endswith(".zip")]
@@ -289,7 +291,6 @@ def _list_versions(repo):
         if games:
             main = max(games, key=lambda a: a["size"])
             versions.append(entry("game", [main], main))
-            seen.add(tag)
             continue
         jars = [a for a in assets if a["name"].lower().endswith(".jar")]
         packs = [a for a in zips if MOD_WORDS.search(a["name"])]
@@ -300,8 +301,29 @@ def _list_versions(repo):
             item["asset"] = ", ".join(a["name"] for a in files)
             item["size"] = sum(a["size"] for a in files)
             versions.append(item)
-            seen.add(tag)
     return versions
+
+
+def _list_versions(repo):
+    """Все версии проекта, в которые можно сыграть: релизы самого проекта плюс эксклюзивные версии из релизов Hub."""
+    try:
+        versions = _versions_from_releases(_github_json(f"repos/{AUTHOR_LOGIN}/{repo}/releases?per_page=50"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        return []
+    prefix = EXCLUSIVE_PREFIX.get(repo)
+    if prefix:
+        try:
+            exclusive = _versions_from_releases(_github_json(f"repos/{AUTHOR_LOGIN}/{HUB_REPO}/releases?per_page=50"), prefix, True)
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+            exclusive = []
+        taken = {v["tag"] for v in exclusive}
+        versions = exclusive + [v for v in versions if v["tag"] not in taken]  # одинаковая версия: берём эксклюзивную
+    seen, unique = set(), []
+    for item in sorted(versions, key=lambda v: v["published"], reverse=True):  # новейшие первыми
+        if item["tag"] not in seen:
+            seen.add(item["tag"])
+            unique.append(item)
+    return unique
 
 
 def _download_file(url, dest, on_progress):
@@ -944,7 +966,7 @@ class Api:
     def author_projects(self):
         """Публичные репозитории автора. Кэш на 6 часов; без сети отдаём прежний кэш."""
         cached = _read_json(AUTHOR_FILE, {})
-        if cached.get("repos") and all("versions" in r for r in cached["repos"]) and time.time() - cached.get("ts", 0) < 6 * 3600:
+        if cached.get("repos") and cached.get("schema") == AUTHOR_SCHEMA and all("versions" in r for r in cached["repos"]) and time.time() - cached.get("ts", 0) < 6 * 3600:
             return {"ok": True, **cached}
         try:
             request = urllib.request.Request(
@@ -958,7 +980,7 @@ class Api:
                   "stars": r.get("stargazers_count", 0), "url": r["html_url"], "homepage": r.get("homepage") or "",
                   "updated": r.get("pushed_at") or r.get("updated_at") or "", "versions": _list_versions(r["name"])}
                  for r in raw if not r.get("fork") and not r.get("archived")]
-        result = {"repos": repos, "ts": time.time()}
+        result = {"repos": repos, "ts": time.time(), "schema": AUTHOR_SCHEMA}
         _write_json(AUTHOR_FILE, result)
         return {"ok": True, **result}
 

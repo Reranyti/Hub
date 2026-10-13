@@ -327,7 +327,7 @@ async function removeVersion(r, tag) {
   await api.author_uninstall(r.name, tag); await refreshAuthorStatus();
 }
 
-const isNewest = (r, v) => versionsOf(r)[0] === v;
+const isNewest = (r, v) => !!v.exclusive;
 const hasJarsOf = (v) => (v.files || []).some((f) => f.name.toLowerCase().endsWith('.jar'));
 
 function versionRow(r, v) {
@@ -348,7 +348,7 @@ function versionRow(r, v) {
   }
   const isInstalledRow = installed || (v.kind === 'mod' && (authorState.mods.installed[r.name] || {}).tag === v.tag);
   return h('div', { class: `ver-row${isInstalledRow ? ' installed' : ''}` },
-    h('div', { class: 'ver-info' }, h('b', {}, v.tag), isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив · новейшая'),
+    h('div', { class: 'ver-info' }, h('b', {}, v.tag), isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив · только в Hub'),
       isInstalledRow && h('span', { class: 'ver-badge' }, 'установлена'),
       h('small', {}, [fmtDate(v.published), mb(v.size), v.title && v.title !== v.tag ? v.title : ''].filter(Boolean).join(' · '))),
     progress && progress.state === 'error' ? h('div', { class: 'error-line' }, `Не получилось: ${progress.error}`) : null,
@@ -399,7 +399,7 @@ function drawAuthorCards() {
 
     grid.append(h('article', { class: `card${open ? ' wide-card' : ''}`, style: `--d:${Math.min(i, 18) * 40}ms` },
       h('div', { class: 'g-body', style: 'padding-top:16px' },
-        latest && h('div', { class: 'excl' }, 'Эксклюзив: новейшая версия в лаунчере'),
+        latest && latest.exclusive && h('div', { class: 'excl' }, 'Эксклюзив: новейшая версия только в Hub'),
         h('div', { class: 'g-title' }, r.name),
         r.desc ? h('div', { class: 'g-notes', style: '-webkit-line-clamp:4' }, r.desc) : null,
         r.lang ? h('div', { class: 'techs' }, h('span', { class: 'tech' }, r.lang)) : null,

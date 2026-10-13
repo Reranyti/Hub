@@ -135,6 +135,7 @@ function installMockApi() {
     skill_fetch: async (kind) => ({ ok: true, values: kind === 'osu' ? { 'PP': 4720.5, 'Глобальный ранг': 78450, 'Точность, %': 97.12 } : { 'Достижения, %': 54.7, 'Редкие достижения': 3 } }),
     author_projects: async () => ({ ok: true, ts: Date.now() / 1000, repos: [
       { name: 'Lotos-Outer', desc: 'Майнкрафт', lang: 'Java', stars: 0, url: 'https://github.com/Reranyti/Lotos-Outer', homepage: '', updated: '2026-10-01T10:00:00Z', versions: [
+        { kind: 'mod', tag: 'v2.3000', title: 'Эксклюзив', exclusive: true, asset: 'lotusblight-2.3000.jar, lotuslib-2.3000.jar', url: '', size: 29277099, published: '2026-10-13T10:00:00Z', files: [{ name: 'lotusblight-2.3000.jar', url: '', size: 29271373 }] },
         { kind: 'mod', tag: 'v2.0008', title: 'Сложность «Хромо»', asset: 'lotusblight-2.0008.jar, lotuslib-2.0008.jar', url: '', size: 150335580, published: '2026-09-20T10:00:00Z' },
         { kind: 'mod', tag: 'v1.1050', title: '', asset: 'LotusBlight-Pack-1.1050.2.zip', url: '', size: 33052843, published: '2026-07-01T10:00:00Z' }] },
       { name: 'DeltaKind', desc: 'Проект основанный на базе Kristal, Фан игра на дельтарун.', lang: 'Lua', stars: 2, url: 'https://github.com/Reranyti/DeltaKind', homepage: '', updated: '2026-10-10T10:00:00Z', versions: [
