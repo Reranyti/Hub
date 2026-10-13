@@ -348,7 +348,7 @@ def _local_exclusive(repo):
         versions.append({
             "downloads": downloads,
             "kind": kind, "tag": folder.name, "exclusive": True, "url": "", "special": special,
-            "title": "Полная сборка разработчика (для тестов)" if special else "Эксклюзивная версия",
+            "title": "Сборка разработчика (Эксклюзивно)" if special else "Эксклюзивная версия",
             "asset": ", ".join(f.name for f in chosen), "size": sum(f.stat().st_size for f in chosen),
             "published": published.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "files": [{"name": f.name, "path": str(f), "size": f.stat().st_size} for f in chosen]})
