@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Установка</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="win">
+    <aside class="side pywebview-drag-region">
+      <div class="brand"><span class="sq"></span>HUB</div>
+      <div class="ver" id="ver"></div>
+      <ol class="steps" id="steps"></ol>
+      <div class="side-note">Устанавливается для текущего пользователя.<br>Права администратора не нужны.</div>
+    </aside>
+
+    <section class="main">
+      <div class="topbar pywebview-drag-region">
+        <button class="wbtn" id="btn-min" title="Свернуть" tabindex="-1"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.4"/></svg></button>
+        <button class="wbtn close" id="btn-close" title="Закрыть" tabindex="-1"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4"/></svg></button>
+      </div>
+      <div class="stage" id="stage"></div>
+    </section>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
