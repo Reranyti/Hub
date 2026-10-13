@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game &amp; Project Hub</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bgart" id="bg-a" aria-hidden="true"></div>
+  <div class="bgart" id="bg-b" aria-hidden="true"></div>
+  <div class="bgfade" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="sq"></span>HUB</div>
+      <nav id="nav">
+        <button data-page="home"><span data-ico="home"></span>Сводка</button>
+        <button data-page="games"><span data-ico="gamepad"></span>Игры</button>
+        <button data-page="wishlist"><span data-ico="star"></span>Желаемое</button>
+        <button data-page="projects"><span data-ico="folder"></span>Проекты</button>
+        <button data-page="stats"><span data-ico="bars"></span>Итоги</button>
+        <button data-page="author"><span data-ico="heart"></span>Автор</button>
+      </nav>
+      <div class="side-foot">
+        <button class="steam-line" id="open-search" title="Быстрый поиск и команды"><span data-ico="search"></span><span>Поиск</span><kbd>Ctrl K</kbd></button>
+        <button class="steam-line" id="open-settings" title="Напоминания, уведомления, Steam"><span data-ico="gear"></span><span>Настройки</span></button>
+        <button class="steam-line" id="steam-chip"><span class="dot"></span><span id="steam-chip-text">Steam не подключён</span></button>
+      </div>
+    </aside>
+
+    <main id="main">
+      <section id="page-home" class="page"></section>
+      <section id="page-games" class="page"></section>
+      <section id="page-projects" class="page"></section>
+      <section id="page-stats" class="page"></section>
+      <section id="page-wishlist" class="page"></section>
+      <section id="page-author" class="page"></section>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <div id="toasts"></div>
+  <script src="extras.js"></script>
+  <script src="more.js"></script>
+  <script src="features.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

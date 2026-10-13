@@ -1,0 +1,23 @@
+# Личные данные пользователя: список игр, настройки (там Steam API-ключ), кэши и учёт времени
+data.json
+settings.json
+meta.json
+tracking.json
+wishlist.json
+author.json
+author_games.json
+author_mods.json
+*.bak
+games/
+downloads/
+
+# Сборка и готовые файлы (раздаются через Releases)
+dist/
+build/
+builds/
+*.spec
+
+# Служебное
+__pycache__/
+*.pyc
+.claude/
