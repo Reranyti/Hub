@@ -328,6 +328,7 @@ def _local_exclusive(repo):
         files = [f for f in folder.iterdir() if f.is_file() and f.suffix.lower() in (".jar", ".zip")]
         if not files:
             continue
+        special = folder.name.lower().endswith(("-full", "-dev"))  # полная сборка разработчика: показывается после основных версий
         zips = [f for f in files if f.suffix.lower() == ".zip"]
         games = [f for f in zips if "win" in f.name.lower()] or [f for f in zips if not MOD_WORDS.search(f.name)]
         if games:
@@ -346,11 +347,14 @@ def _local_exclusive(repo):
                          if isinstance(d, dict) and d.get("file") and d.get("url") and d.get("sha1")]
         versions.append({
             "downloads": downloads,
-            "kind": kind, "tag": folder.name, "title": "Эксклюзивная версия", "exclusive": True, "url": "",
+            "kind": kind, "tag": folder.name, "exclusive": True, "url": "", "special": special,
+            "title": "Полная сборка разработчика (для тестов)" if special else "Эксклюзивная версия",
             "asset": ", ".join(f.name for f in chosen), "size": sum(f.stat().st_size for f in chosen),
             "published": published.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "files": [{"name": f.name, "path": str(f), "size": f.stat().st_size} for f in chosen]})
-    return sorted(versions, key=lambda v: v["published"], reverse=True)
+    versions.sort(key=lambda v: v["published"], reverse=True)
+    versions.sort(key=lambda v: v["special"])  # обычные версии первыми, «для тестов» в конце
+    return versions
 
 
 def _all_versions(repo):

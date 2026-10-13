@@ -350,7 +350,7 @@ function versionRow(r, v) {
   }
   const isInstalledRow = installed || (v.kind === 'mod' && (authorState.mods.installed[r.name] || {}).tag === v.tag);
   return h('div', { class: `ver-row${isInstalledRow ? ' installed' : ''}` },
-    h('div', { class: 'ver-info' }, h('b', {}, v.tag), isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив'),
+    h('div', { class: 'ver-info' }, h('b', {}, v.tag), v.special ? h('span', { class: 'ver-badge' }, 'Для тестов: полная сборка') : isNewest(r, v) && h('span', { class: 'ver-badge new' }, 'Эксклюзив'),
       isInstalledRow && h('span', { class: 'ver-badge' }, 'установлена'),
       h('small', {}, [fmtDate(v.published), mb(v.size), v.title && v.title !== v.tag ? v.title : ''].filter(Boolean).join(' · '))),
     progress && progress.state === 'error' ? h('div', { class: 'error-line' }, `Не получилось: ${progress.error}`) : null,
