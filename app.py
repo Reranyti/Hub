@@ -335,7 +335,17 @@ def _local_exclusive(repo):
         else:
             kind, chosen = "mod", sorted(files, key=lambda f: f.name)
         published = datetime.datetime.fromtimestamp(max(f.stat().st_mtime for f in chosen), datetime.timezone.utc)
+        downloads = []
+        deps_file = folder / "deps.json"
+        if deps_file.is_file():  # зависимости, которые нельзя класть в раздачу: докачиваются с официальных страниц
+            try:
+                raw = json.loads(deps_file.read_text(encoding="utf-8")).get("downloads", [])
+            except (OSError, json.JSONDecodeError):
+                raw = []
+            downloads = [{k: d.get(k, "") for k in ("name", "file", "url", "sha1", "page")} for d in raw
+                         if isinstance(d, dict) and d.get("file") and d.get("url") and d.get("sha1")]
         versions.append({
+            "downloads": downloads,
             "kind": kind, "tag": folder.name, "title": "Эксклюзивная версия", "exclusive": True, "url": "",
             "asset": ", ".join(f.name for f in chosen), "size": sum(f.stat().st_size for f in chosen),
             "published": published.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -350,6 +360,42 @@ def _all_versions(repo):
     local = _local_exclusive(repo)
     taken = {v["tag"] for v in local}
     return local + [v for v in published if v["tag"] not in taken and not v.get("exclusive")]
+
+
+EXTERNAL_HOSTS = {"cdn.modrinth.com", "mediafilez.forgecdn.net"}  # откуда разрешено докачивать зависимости
+OWN_MOD = re.compile(r"^(lotusblight|lotuslib)-", re.IGNORECASE)
+
+
+def _mod_prefix(name):
+    """Имя мода без версии: geckolib-forge-1.20.1-4.8.4.jar -> geckolib-forge."""
+    return re.split(r"-\d", name, maxsplit=1)[0].lower()
+
+
+def _download_external(item, dest, on_progress):
+    """Зависимость с официальной страницы: только https и разрешённые хосты, обязательна проверка SHA-1."""
+    parsed = urllib.parse.urlparse(item.get("url", ""))
+    if parsed.scheme != "https" or parsed.hostname not in EXTERNAL_HOSTS or not item.get("sha1"):
+        raise ValueError("Источник зависимости не из списка официальных или нет контрольной суммы.")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha1()
+    request = urllib.request.Request(item["url"], headers={"User-Agent": "GameProjectHub"})
+    with urllib.request.urlopen(request, timeout=30) as response, open(dest, "wb") as out:
+        total = int(response.headers.get("Content-Length") or 0)
+        done = 0
+        while True:
+            chunk = response.read(262144)
+            if not chunk:
+                break
+            done += len(chunk)
+            if done > MAX_DOWNLOAD:
+                raise ValueError("Файл слишком большой.")
+            digest.update(chunk)
+            out.write(chunk)
+            if total:
+                on_progress(done / total)
+    if digest.hexdigest().lower() != item["sha1"].lower():
+        dest.unlink(missing_ok=True)
+        raise ValueError(f"Контрольная сумма {item.get('file', '')} не совпала: файл не установлен.")
 
 
 def _fetch_file(item, dest, on_progress):
@@ -437,24 +483,42 @@ def _author_worker(repo, play):
             mods_dir = Path(play["mods_dir"])
             staging = DATA_DIR / "downloads" / repo / safe_tag
             shutil.rmtree(staging, ignore_errors=True)
-            for index, item in enumerate(jars):
+            externals = play.get("downloads") or []
+            total_steps = len(jars) + len(externals)
+            step = 0
+            for item in jars:
                 _fetch_file(item, staging / Path(item["name"]).name,
-                            lambda f, i=index: progress.update(percent=int((i + f) / len(jars) * 90)))
+                            lambda f, i=step: progress.update(percent=int((i + f) / total_steps * 90)))
+                step += 1
+            for item in externals:
+                progress.update(label="Скачиваю зависимости")
+                _download_external(item, staging / Path(item["file"]).name,
+                                   lambda f, i=step: progress.update(percent=int((i + f) / total_steps * 90)))
+                step += 1
             progress.update(label="Устанавливаю", percent=95)
             mods_dir.mkdir(parents=True, exist_ok=True)
             backup = mods_dir / ".hub-old"
-            names = [Path(item["name"]).name for item in jars]
-            for name in names:  # прежние версии этого же мода (lotusblight-1.6.0.jar для lotusblight-2.0.jar) уходят в запасник
-                prefix = re.split(r"-\d", name, maxsplit=1)[0].lower()
+            names = [Path(item["name"]).name for item in jars] + [Path(item["file"]).name for item in externals]
+            own = [n for n in names if OWN_MOD.match(n)] or [Path(item["name"]).name for item in jars]
+            deps = [n for n in names if n not in own]
+            for name in own:  # свои файлы: прежние версии этого же мода уходят в запасник
+                prefix = _mod_prefix(name)
                 for old in mods_dir.glob("*.jar"):
                     if old.name != name and old.name.lower().startswith(prefix + "-"):
                         backup.mkdir(exist_ok=True)
                         shutil.move(str(old), str(backup / old.name))
-            for name in names:
                 shutil.copy2(staging / name, mods_dir / name)
+            installed_deps, kept = [], []
+            for name in deps:  # зависимость уже стоит (любой версии): не трогаем, чтобы не сломать другие моды игрока
+                prefix = _mod_prefix(name)
+                if any(p.name.lower().startswith(prefix + "-") for p in mods_dir.glob("*.jar")):
+                    kept.append(name)
+                else:
+                    shutil.copy2(staging / name, mods_dir / name)
+                    installed_deps.append(name)
             shutil.rmtree(staging, ignore_errors=True)
             records = _read_json(AUTHOR_MODS_FILE, {})
-            records[repo] = {"tag": play["tag"], "mods_dir": str(mods_dir), "files": names}
+            records[repo] = {"tag": play["tag"], "mods_dir": str(mods_dir), "files": own, "deps": installed_deps, "kept": kept}
             _write_json(AUTHOR_MODS_FILE, records)
             progress.update(state="done", percent=100, path=str(mods_dir))
             return

@@ -293,9 +293,11 @@ async function installMod(r, v) {
   }
   const ok = await confirmBox(hasJars ? 'Установить мод?' : 'Скачать сборку?', hasJars
     ? `Файлы: ${v.asset} (${mb(v.size)}), версия ${v.tag}. Они будут установлены в папку «${path}». Прежние версии этого мода переедут в подпапку «.hub-old» (удаляйте её, когда убедитесь, что новая работает). `
+      + ((v.downloads || []).length ? `Недостающие зависимости (${v.downloads.map((d) => d.name).join(', ')}) скачаются с официальных страниц, контрольная сумма проверяется. ` : '')
+      + (v.exclusive ? 'Уже установленные у вас моды-зависимости не заменяются. ' : '')
       + (authorState.mods.forge ? 'Forge 1.20.1 найден. ' : 'Forge 1.20.1 в стандартной папке Minecraft не найден: без него мод не запустится. ')
       + 'Закройте Minecraft перед установкой.'
-    : `Файл «${v.asset}» (${mb(v.size)}) будет сохранён в папку «Загрузки»: это сборка для лаунчера, её нужно импортировать в Minecraft-лаунчер.`,
+    : `Файл «${v.asset}» (${mb(v.size)}) будет сохранён в папку «Загрузки». Распакуйте архив и запустите install.bat: он поставит мод, нужные ему моды и шейдеры, а недостающее скачает с официальных страниц. Forge 1.20.1 нужно поставить заранее.`,
     hasJars ? 'Установить' : 'Скачать', 'primary');
   if (!ok) return;
   const res = await api.author_install(r.name, v.tag, hasJars ? path : null);
@@ -395,7 +397,8 @@ function drawAuthorCards() {
     let summary;
     if (!latest) summary = 'Готовой сборки для игры пока нет: смотрите описание на GitHub.';
     else if (latest.kind === 'game') summary = `Сборка для Windows · новейшая версия ${latest.tag} · ${mb(latest.size)}${lastTag ? ` · у вас ${lastTag}` : ''}`;
-    else summary = `Мод для Minecraft (Forge) · новейшая версия ${latest.tag} · ${mb(latest.size)}. Устанавливается в папку mods.`;
+    else summary = hasJarsOf(latest) ? `Мод для Minecraft (Forge) · новейшая версия ${latest.tag} · ${mb(latest.size)}. Устанавливается в папку mods.`
+      : `Полная сборка для Minecraft: мод, все зависимости и шейдеры · версия ${latest.tag} · ${mb(latest.size)}. После скачивания запустите install.bat.`;
 
     grid.append(h('article', { class: `card${open ? ' wide-card' : ''}`, style: `--d:${Math.min(i, 18) * 40}ms` },
       h('div', { class: 'g-body', style: 'padding-top:16px' },
