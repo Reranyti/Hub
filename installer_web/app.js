@@ -21,21 +21,27 @@ const api = new Proxy({}, { get: (_, name) => (...args) => window.pywebview.api[
 function installMock(mode) {
   let t = 0;
   window.pywebview = { api: {
-    info: async () => ({ mode, version: '1.0.0', name: 'Game & Project Hub', default_dir: 'C:\\Users\\User\\AppData\\Local\\Programs\\Game Project Hub', update: false, webview2: true, size_mb: 140, has_data: true }),
+    info: async () => ({ mode, version: '1.0.0', name: 'Game & Project Hub', default_dir: 'C:\\Users\\User\\AppData\\Local\\Programs\\Game Project Hub', update: false, webview2: true, size_mb: 140, has_data: true, full: mode !== 'plain', exclusive_installed: true, components: mode === 'plain' ? [] : [
+      { id: 'Lotos-Outer/v2.3000', name: 'Lotos-Outer 2.3000 (эксклюзив)', desc: 'Мод и обязательные зависимости', size_mb: 35 },
+      { id: 'Lotos-Outer/v2.3000-full', name: 'Сборка разработчика (Эксклюзивно)', desc: 'Полная тестовая сборка: моды, конфиги, шейдеры, install.bat', size_mb: 53 },
+      { id: 'DeltaKind/excl', name: 'DeltaKind (эксклюзив)', desc: 'Новейшая сборка из рабочей копии', size_mb: 62 }] }),
     pick_folder: async () => 'D:\\Games\\Hub', start: async () => { t = 0; return true; },
     progress: async () => { t = Math.min(100, t + 7); return { percent: t, label: t < 100 ? 'Копирую файлы' : 'Готово', file: 'python313.dll', done: t >= 100, error: '', exe: 'x' }; },
     launch: async () => true, open_link: async () => true, minimize: async () => {}, close: async () => {},
   } };
 }
 
-const state = { info: null, step: 0, opts: { dir: '', desktop: true, startmenu: true, autostart: false, remove_data: false } };
+const state = { info: null, step: 0, opts: { dir: '', desktop: true, startmenu: true, autostart: false, remove_data: false, remove_exclusive: false, components: [] } };
+const isFull = () => !!(state.info && state.info.full);
+const S = (n) => (isFull() && n >= 1 ? n + 1 : n);  // в полной версии добавлен шаг «Компоненты»
 const STEPS = {
   install: ['Приветствие', 'Параметры', 'Установка', 'Готово'],
+  installFull: ['Приветствие', 'Компоненты', 'Параметры', 'Установка', 'Готово'],
   uninstall: ['Подтверждение', 'Удаление', 'Готово'],
 };
 
 function renderSteps() {
-  const list = STEPS[state.info.mode];
+  const list = STEPS[state.info.mode === 'install' && isFull() ? 'installFull' : state.info.mode];
   $('#steps').replaceChildren(...list.map((name, i) => h('li', { class: i === state.step ? 'active' : i < state.step ? 'done' : '' },
     h('i', {}, i < state.step ? '✓' : String(i + 1)), name)));
 }
@@ -64,9 +70,10 @@ function pageWelcome() {
       h('li', {}, 'Библиотека Steam и каталог игр вне Steam'),
       h('li', {}, 'Авто-учёт часов по запущенным процессам'),
       h('li', {}, 'Трекер скилла и особые разделы: Minecraft, osu!, Roblox')),
+    isFull() && h('p', { class: 'hint', style: 'margin-top:18px;max-width:470px' }, 'Полная версия: внутри эксклюзивные версии проектов, которых нет в открытом доступе. Не передавайте этот файл третьим лицам.'),
     !i.webview2 && h('div', { class: 'alert' }, 'Не найден Microsoft Edge WebView2 Runtime: без него окно приложения не откроется. Установите его с ',
       h('span', { class: 'link', onclick: () => api.open_link('https://developer.microsoft.com/microsoft-edge/webview2/') }, 'сайта Microsoft'), ' и запустите установку снова.'),
-    h('div', { class: 'actions' }, cancel(), btn(i.update ? 'Обновить' : 'Далее', () => go(pageOptions, 1))));
+    h('div', { class: 'actions' }, cancel(), btn(i.update ? 'Обновить' : 'Далее', () => go(isFull() ? pageComponents : pageOptions, 1))));
 }
 
 function toggle(key, title, hint) {
@@ -76,6 +83,42 @@ function toggle(key, title, hint) {
   row.addEventListener('click', flip);
   row.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
   return row;
+}
+
+/* ----- компоненты (только полная версия) ----- */
+function pageComponents() {
+  const list = h('div', { class: 'toggles' });
+  const summary = h('div', { class: 'hint', style: 'margin-top:12px' });
+  const update = () => {
+    const chosen = state.info.components.filter((c) => state.opts.components.includes(c.id));
+    const mb = chosen.reduce((s, c) => s + c.size_mb, 0);
+    summary.textContent = chosen.length ? `Выбрано: ${chosen.length} · ≈ ${mb} МБ эксклюзива, ещё ≈ ${state.info.size_mb} МБ — сама программа` : `Эксклюзив не выбран · только программа ≈ ${state.info.size_mb} МБ`;
+  };
+  const row = (title, hint, size, checked, locked, onChange) => {
+    const el = h('div', { class: `toggle${checked ? ' on' : ''}${locked ? ' locked' : ''}`, role: 'switch', tabindex: locked ? '-1' : '0', 'aria-checked': String(checked) },
+      h('div', { class: 'txt' }, h('b', {}, title), h('small', {}, hint)), h('span', { class: 'size' }, size), h('div', { class: 'switch' }));
+    if (!locked) {
+      const flip = () => { const now = !el.classList.contains('on'); el.classList.toggle('on', now); el.setAttribute('aria-checked', String(now)); onChange(now); update(); };
+      el.addEventListener('click', flip);
+      el.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip(); } });
+    }
+    return el;
+  };
+  list.append(row(state.info.name, 'Приложение: обязательный компонент', `${state.info.size_mb} МБ`, true, true, () => {}));
+  state.info.components.forEach((c) => list.append(row(c.name, c.desc, `${c.size_mb} МБ`, state.opts.components.includes(c.id), false, (on) => {
+    state.opts.components = on ? [...new Set([...state.opts.components, c.id])] : state.opts.components.filter((x) => x !== c.id);
+  })));
+  update();
+  const all = h('span', { class: 'link', onclick: () => {
+    const none = state.opts.components.length === state.info.components.length;
+    state.opts.components = none ? [] : state.info.components.map((c) => c.id);
+    go(pageComponents, 1);
+  } }, state.opts.components.length === state.info.components.length ? 'Снять все' : 'Выбрать все');
+  return h('div', { class: 'page' },
+    h('div', { class: 'eyebrow' }, 'Компоненты'), h('h1', {}, 'Что установить'),
+    h('p', { class: 'lead' }, 'Эксклюзивные версии лежат внутри этого установщика и не требуют интернета. Каждая проверяется контрольной суммой перед установкой.'),
+    list, summary, h('div', { class: 'hint' }, all),
+    h('div', { class: 'actions' }, btn('Назад', () => go(pageWelcome, 0), 'ghost'), btn('Далее', () => go(pageOptions, 2))));
 }
 
 function pageOptions() {
@@ -94,7 +137,7 @@ function pageOptions() {
       toggle('desktop', 'Ярлык на рабочем столе'),
       toggle('startmenu', 'Ярлык в меню «Пуск»'),
       toggle('autostart', 'Запускать вместе с Windows', 'Окно стартует свёрнутым. Нужно, чтобы время считалось и пока вы не открывали программу.')),
-    h('div', { class: 'actions' }, btn('Назад', () => go(pageWelcome, 0), 'ghost'), btn('Установить', startInstall)));
+    h('div', { class: 'actions' }, btn('Назад', () => (isFull() ? go(pageComponents, 1) : go(pageWelcome, 0)), 'ghost'), btn('Установить', startInstall)));
 }
 
 /* ----- прогресс (общий для установки и удаления) ----- */
@@ -133,10 +176,10 @@ function poll(refs, onDone) {
 
 async function startInstall() {
   const page = pageProgress('Установка', 'Подождите минуту');
-  go(() => page, 2);
+  go(() => page, S(2));
   shown = 0;
   await api.start({ ...state.opts });
-  poll(page.refs, () => go(pageDone, 3));
+  poll(page.refs, () => go(pageDone, S(3)));
 }
 
 const checkSvg = () => {
@@ -157,7 +200,8 @@ function pageDone() {
 function pageConfirmUninstall() {
   return h('div', { class: 'page' }, h('div', { class: 'eyebrow' }, 'Удаление'), h('h1', {}, 'Удалить программу?'),
     h('p', { class: 'lead' }, 'Будут удалены программа, ярлыки и автозапуск. Ваши игры, проекты и настройки по умолчанию останутся: при повторной установке всё вернётся.'),
-    h('div', { class: 'toggles' }, toggle('remove_data', 'Удалить и мои данные', state.info.has_data
+    h('div', { class: 'toggles' }, state.info.exclusive_installed && toggle('remove_exclusive', 'Удалить эксклюзивные версии', 'Файлы в папке exclusive. Список игр, проекты и настройки останутся.'),
+      toggle('remove_data', 'Удалить и мои данные', state.info.has_data
       ? 'Список игр, проекты, история времени и сохранённый ключ Steam. Это нельзя отменить.' : 'Сохранённых данных не найдено.')),
     h('div', { class: 'actions' }, cancel(), btn('Удалить', startUninstall, 'danger')));
 }
@@ -180,6 +224,7 @@ function pageUninstalled() {
 async function boot() {
   state.info = await api.info();
   state.opts.dir = state.info.default_dir;
+  state.opts.components = (state.info.components || []).map((c) => c.id);
   $('#ver').textContent = `ВЕРСИЯ ${state.info.version}`;
   $('#btn-min').addEventListener('click', () => api.minimize());
   $('#btn-close').addEventListener('click', () => api.close());

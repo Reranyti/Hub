@@ -99,3 +99,8 @@ h1 { font-family: var(--head); font-size: 40px; font-weight: 500; line-height: 1
 .where { margin-top: 18px; font: 12px Consolas, monospace; color: var(--dim); user-select: text; word-break: break-all; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.toggle .size { color: var(--dim); font: 12px var(--head); letter-spacing: .04em; white-space: nowrap; }
+.toggle.locked { cursor: default; opacity: .75; }
+.toggle.locked .switch { background: var(--panel2); border-color: var(--line2); }
+.toggle.locked.on .switch::after { background: var(--muted); }

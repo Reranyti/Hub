@@ -3,10 +3,14 @@
 Один и тот же файл работает в двух режимах:
   GameProjectHub-Setup.exe          - установка
   uninstall.exe  (или --uninstall)  - удаление
-Для автоматизации: --silent, --dir <папка>, --no-shortcuts, --no-registry, --keep-data
+Для автоматизации: --silent, --dir <папка>, --no-shortcuts, --no-registry, --keep-data,
+  --components all|none|<id,id> (только в полной версии), --remove-exclusive (при удалении)
+Полная версия (GameProjectHub-Setup-Full.exe) содержит эксклюзивные версии проектов внутри себя.
 Установка идёт в профиль пользователя, права администратора не нужны.
 """
 import datetime
+import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -32,6 +36,18 @@ WEBVIEW2_GUID = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7
 DEFAULT_DIR = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Programs" / APP_FOLDER
 DATA_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / DATA_FOLDER
 
+
+
+def _load_components():
+    """Компоненты полной версии: эксклюзивные версии проектов, зашитые в установщик (components.json + exclusive.zip)."""
+    try:
+        manifest = json.loads((RES / "components.json").read_text(encoding="utf-8"))
+        return manifest.get("components", []) if (RES / "exclusive.zip").exists() else []
+    except (OSError, ValueError):
+        return []
+
+
+COMPONENTS = _load_components()
 ARGS = sys.argv[1:]
 UNINSTALL_MODE = "--uninstall" in ARGS or Path(sys.executable).stem.lower() == "uninstall"
 
@@ -117,6 +133,39 @@ def _safe_target(path):
     return len(path.parts) >= 3 and path != Path.home()
 
 
+def _install_components(ids):
+    """Проверяет целостность (SHA-256) и раскладывает выбранные эксклюзивные версии в папку данных приложения."""
+    chosen = [c for c in COMPONENTS if c["id"] in set(ids or [])]  # идентификаторы берём только из манифеста
+    if not chosen:
+        return []
+    base = DATA_DIR / "exclusive"
+    with zipfile.ZipFile(RES / "exclusive.zip") as archive:
+        total, done = sum(len(c["files"]) for c in chosen), 0
+        for comp in chosen:
+            for name, expected in comp["files"].items():
+                digest = hashlib.sha256()
+                with archive.open(name) as source:
+                    for chunk in iter(lambda: source.read(1 << 20), b""):
+                        digest.update(chunk)
+                if digest.hexdigest() != expected:
+                    raise ValueError(f"Файл повреждён: {Path(name).name}. Скачайте установщик заново.")
+                done += 1
+                _set(60 + int(10 * done / total), "Проверяю целостность", Path(name).name)
+        for index, comp in enumerate(chosen, 1):
+            destination = base / comp["id"]
+            shutil.rmtree(destination, ignore_errors=True)
+            root = destination.resolve()
+            for name in comp["files"]:
+                target = (destination / name[len(comp["id"]) + 1:]).resolve()
+                if root not in target.parents:
+                    raise ValueError("Небезопасный путь внутри установщика.")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.open(name) as source, open(target, "wb") as out:
+                    shutil.copyfileobj(source, out)
+            _set(70 + int(16 * index / len(chosen)), "Устанавливаю эксклюзив", comp["name"])
+    return [c["id"] for c in chosen]
+
+
 # ---------- Установка ----------
 def do_install(opts):
     try:
@@ -137,13 +186,17 @@ def do_install(opts):
             (target / EXE_NAME).unlink(missing_ok=True)
 
         target.mkdir(parents=True, exist_ok=True)
+        selected = [c for c in (opts.get("components") or []) if any(c == k["id"] for k in COMPONENTS)]
+        span = 55 if selected else 80  # доля шкалы на копирование самого приложения
         with zipfile.ZipFile(payload) as archive:
             names = archive.namelist()
             for i, name in enumerate(names, 1):
                 archive.extract(name, target)
                 if i % 12 == 0 or i == len(names):
-                    _set(5 + int(80 * i / len(names)), "Копирую файлы", Path(name).name)
+                    _set(5 + int(span * i / len(names)), "Копирую файлы", Path(name).name)
         exe = target / EXE_NAME
+        if selected:
+            _install_components(selected)
 
         _set(88, "Настраиваю удаление программы")
         if FROZEN:
@@ -218,6 +271,9 @@ def do_uninstall(opts):
         if opts.get("remove_data") and DATA_DIR.exists():
             _set(75, "Удаляю мои данные")
             shutil.rmtree(DATA_DIR, ignore_errors=True)
+        elif opts.get("remove_exclusive") and (DATA_DIR / "exclusive").exists():
+            _set(75, "Удаляю эксклюзивные версии")  # данные пользователя (игры, настройки) остаются
+            shutil.rmtree(DATA_DIR / "exclusive", ignore_errors=True)
 
         _set(90, "Удаляю файлы программы")
         # сам uninstall.exe занят, поэтому папку добивает отдельный процесс через несколько секунд
@@ -243,6 +299,9 @@ class Api:
             "webview2": _webview2_present(),
             "size_mb": _payload_size_mb(),
             "has_data": DATA_DIR.exists(),
+            "full": bool(COMPONENTS),
+            "components": [{"id": c["id"], "name": c["name"], "desc": c.get("desc", ""), "size_mb": c.get("size_mb", 0)} for c in COMPONENTS],
+            "exclusive_installed": (DATA_DIR / "exclusive").exists(),
         }
 
     def pick_folder(self):
@@ -278,7 +337,13 @@ class Api:
 def run_silent():
     opts = {"dir": str(DEFAULT_DIR), "desktop": True, "startmenu": True, "autostart": False,
             "no_shortcuts": "--no-shortcuts" in ARGS, "no_registry": "--no-registry" in ARGS,
-            "remove_data": "--keep-data" not in ARGS and "--remove-data" in ARGS}
+            "remove_data": "--keep-data" not in ARGS and "--remove-data" in ARGS,
+            "remove_exclusive": "--remove-exclusive" in ARGS}
+    if "--components" in ARGS:
+        value = ARGS[ARGS.index("--components") + 1]
+        opts["components"] = [c["id"] for c in COMPONENTS] if value == "all" else [] if value == "none" else value.split(",")
+    else:
+        opts["components"] = [c["id"] for c in COMPONENTS]  # полная версия по умолчанию ставит всё
     if "--dir" in ARGS:
         opts["dir"] = ARGS[ARGS.index("--dir") + 1]
     (do_uninstall if UNINSTALL_MODE else do_install)(opts)
@@ -289,7 +354,7 @@ def main():
     if "--silent" in ARGS:
         sys.exit(run_silent())
     webview.create_window(
-        f"{APP_NAME}: " + ("удаление" if UNINSTALL_MODE else "установка"),
+        f"{APP_NAME}: " + ("удаление" if UNINSTALL_MODE else "установка (полная версия)" if COMPONENTS else "установка"),
         url=str(RES / "installer_web" / "index.html"),
         js_api=Api(), width=880, height=580, resizable=False, frameless=True, easy_drag=False,
         background_color="#0c0c0e",
