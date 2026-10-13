@@ -1,0 +1,72 @@
+Game & Project Hub — собственническая лицензия / Proprietary License
+
+Copyright (c) 2026 Reranyti. Все права защищены. / All rights reserved.
+
+
+РУССКИЙ
+
+Проект закрытый. Исходный код виден в репозитории только для ознакомления:
+это не делает его открытым (open source) и не передаёт права на него.
+
+1. Что разрешено:
+   - просматривать и читать исходный код;
+   - запускать приложение и готовую сборку (установщик из раздела Releases);
+   - использовать, запускать и изменять копию кода ЛОКАЛЬНО, на своём
+     компьютере и для себя, если результат остаётся у вас и нигде не
+     публикуется;
+   - сообщать об ошибках и предлагать идеи через Issues.
+
+2. Что запрещено без предварительного письменного разрешения автора:
+   - публиковать, выкладывать, загружать (push, fork, upload, архивы,
+     файлообменники, мессенджеры, форумы и любые другие площадки) исходный
+     код, его части, собранные из него программы, собственные сборки и
+     изменённые версии;
+   - распространять, передавать третьим лицам, сдавать в аренду, продавать;
+   - использовать код или его части в своих проектах, которые вы публикуете
+     или распространяете, а также в любых коммерческих целях;
+   - использовать код для обучения, дообучения или оценки моделей машинного
+     обучения;
+   - убирать или менять уведомления об авторских правах.
+
+3. Сторонние компоненты (pywebview, psutil, PyInstaller, Pillow и другие) не
+   входят в эту лицензию и распространяются на условиях своих лицензий.
+
+4. Программа и код предоставляются «как есть», без каких-либо гарантий.
+   Автор не отвечает за убытки, возникшие при использовании программы.
+
+5. Все права, прямо не предоставленные настоящей лицензией, сохраняются за
+   автором. При нарушении условий права на использование прекращаются.
+
+Для запроса разрешения свяжитесь с автором через профиль GitHub: Reranyti.
+
+
+ENGLISH
+
+This is a closed project. The source code is visible in this repository for
+reference only; this does not make it open source and does not grant any rights.
+
+1. Permitted: viewing and reading the source code; running the application and
+   the prebuilt installer from Releases; using, running and modifying a copy of
+   the code LOCALLY, on your own computer and for yourself, provided the result
+   stays with you and is not published anywhere; reporting bugs and suggesting
+   ideas through Issues.
+
+2. Prohibited without the author's prior written permission: publishing,
+   uploading or pushing the source code, parts of it, programs built from it,
+   your own builds or modified versions to any place (repositories, forks,
+   archives, file hosting, messengers, forums or any other platform);
+   distributing, passing to third parties, renting or selling it; using the
+   code or parts of it in projects you publish or distribute, or for any
+   commercial purpose; using the code to train, fine-tune or evaluate machine
+   learning models; removing or altering copyright notices.
+
+3. Third-party components (pywebview, psutil, PyInstaller, Pillow and others)
+   are not covered by this license and remain under their own licenses.
+
+4. The software and code are provided "as is", without warranty of any kind.
+   The author is not liable for any damages arising from its use.
+
+5. All rights not expressly granted are reserved by the author. The permissions
+   above terminate automatically if you violate these terms.
+
+To request permission, contact the author via the GitHub profile: Reranyti.
